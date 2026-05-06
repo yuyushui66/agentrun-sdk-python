@@ -714,14 +714,15 @@ class MemoryCollection(
                 }
 
                 # 从 vector_store_config 中获取向量维度
-                if (
-                    memory_collection.vector_store_config
-                    and memory_collection.vector_store_config.config
-                    and memory_collection.vector_store_config.config.vector_dimension
-                ):
-                    embedder_config_dict["embedding_dims"] = (
-                        memory_collection.vector_store_config.config.vector_dimension
-                    )
+                vector_dimension: Optional[int] = None
+                if memory_collection.vector_store_config:
+                    vsc = memory_collection.vector_store_config
+                    if vsc.config and vsc.config.vector_dimension:
+                        vector_dimension = vsc.config.vector_dimension
+                    elif vsc.mysql_config and vsc.mysql_config.vector_dimension:
+                        vector_dimension = vsc.mysql_config.vector_dimension
+                if vector_dimension:
+                    embedder_config_dict["embedding_dims"] = vector_dimension
 
                 mem0_config["embedder"] = {
                     "provider": "openai",  # mem0 使用 openai 兼容接口
@@ -880,14 +881,15 @@ class MemoryCollection(
                 }
 
                 # 从 vector_store_config 中获取向量维度
-                if (
-                    memory_collection.vector_store_config
-                    and memory_collection.vector_store_config.config
-                    and memory_collection.vector_store_config.config.vector_dimension
-                ):
-                    embedder_config_dict["embedding_dims"] = (
-                        memory_collection.vector_store_config.config.vector_dimension
-                    )
+                vector_dimension: Optional[int] = None
+                if memory_collection.vector_store_config:
+                    vsc = memory_collection.vector_store_config
+                    if vsc.config and vsc.config.vector_dimension:
+                        vector_dimension = vsc.config.vector_dimension
+                    elif vsc.mysql_config and vsc.mysql_config.vector_dimension:
+                        vector_dimension = vsc.mysql_config.vector_dimension
+                if vector_dimension:
+                    embedder_config_dict["embedding_dims"] = vector_dimension
 
                 mem0_config["embedder"] = {
                     "provider": "openai",  # mem0 使用 openai 兼容接口
