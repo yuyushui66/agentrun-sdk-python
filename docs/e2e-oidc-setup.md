@@ -146,8 +146,10 @@ Go to **GitHub repo > Settings > Secrets and variables > Actions** and add:
 | `AGENTRUN_REGION` | Region for test resources | `cn-hangzhou` |
 | `AGENTRUN_CONTROL_ENDPOINT` | AgentRun control API endpoint | `https://agentrun.cn-hangzhou.aliyuncs.com` |
 | `AGENTRUN_DATA_ENDPOINT` | AgentRun data API endpoint | `https://1234567890.agentrun-data.cn-hangzhou.aliyuncs.com` |
-| `API_KEY` | API key for AgentRun calls | (your API key) |
-| `AGENTRUN_TEST_WORKSPACE_ID` | Workspace ID for test isolation | (your workspace ID) |
+
+
+> `API_KEY` and `AGENTRUN_TEST_WORKSPACE_ID` use hardcoded placeholders in the
+> workflow and do not need to be configured as secrets.
 
 ## Step 5: Verify
 

@@ -64,8 +64,8 @@ jobs:
         AGENTRUN_REGION: ${{ secrets.AGENTRUN_REGION }}
         AGENTRUN_CONTROL_ENDPOINT: ${{ secrets.AGENTRUN_CONTROL_ENDPOINT }}
         AGENTRUN_DATA_ENDPOINT: ${{ secrets.AGENTRUN_DATA_ENDPOINT }}
-        API_KEY: ${{ secrets.API_KEY }}
-        AGENTRUN_TEST_WORKSPACE_ID: ${{ secrets.AGENTRUN_TEST_WORKSPACE_ID }}
+        API_KEY: sk-placeholder
+        AGENTRUN_TEST_WORKSPACE_ID: placeholder
       run: |
         uv run pytest tests/e2e/ -v --tb=short
 
