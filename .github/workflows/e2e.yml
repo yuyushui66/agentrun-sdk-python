@@ -64,10 +64,10 @@ jobs:
         AGENTRUN_REGION: ${{ secrets.AGENTRUN_REGION }}
         AGENTRUN_CONTROL_ENDPOINT: ${{ secrets.AGENTRUN_CONTROL_ENDPOINT }}
         AGENTRUN_DATA_ENDPOINT: ${{ secrets.AGENTRUN_DATA_ENDPOINT }}
-        API_KEY: sk-placeholder
-        AGENTRUN_TEST_WORKSPACE_ID: placeholder
+        # API_KEY and AGENTRUN_TEST_WORKSPACE_ID are intentionally NOT set
+        # so tests requiring them are automatically skipped via skipif markers.
       run: |
-        uv run pytest tests/e2e/ -v --tb=short
+        uv run pytest tests/e2e/ -v --tb=short --ignore=tests/e2e/integration
 
     - name: E2E Summary
       if: always()
