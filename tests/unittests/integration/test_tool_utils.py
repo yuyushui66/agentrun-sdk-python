@@ -809,6 +809,34 @@ class TestCreateFunctionWithSignatureAliasSanitization:
         assert "query" in sig.parameters
         assert "x_alias" in sig.parameters
 
+    def test_call_via_sanitized_alias_name_routes_to_canonical(self):
+        """用签名暴露的 sanitized alias 名调用时也应翻译到 canonical 字段
+
+        回归 Copilot review 提出的: 仅 sanitize 签名不够, 还要让
+        _normalize_tool_arguments 认识 sanitized alias.
+        """
+        from pydantic import BaseModel as _BM
+        from pydantic import Field as _Field
+
+        class _Args(_BM):
+            query: str = _Field()
+
+        setattr(_Args, "__agentrun_argument_aliases__", {"x-alias": "query"})
+
+        toolset = MagicMock()
+        toolset.call_tool = MagicMock(return_value={"ok": True})
+        func = _create_function_with_signature("demo", _Args, toolset, None)
+
+        # 用沙化后的 alias 名 (签名暴露的形式) 调用
+        func(x_alias="hello")
+
+        call_kwargs = toolset.call_tool.call_args.kwargs
+        assert call_kwargs["arguments"] == {"query": "hello"}
+        # 同时验证: alias_map 已被扩展, 包含 sanitized 形式
+        merged_map = getattr(_Args, "__agentrun_argument_aliases__")
+        assert merged_map.get("x_alias") == "query"
+        assert merged_map.get("x-alias") == "query"
+
 
 class TestBuildToolFromMetaInvalidFieldNames:
     """覆盖 _build_tool_from_meta 完整链路 (回归 'x-access-id' 加载失败)"""

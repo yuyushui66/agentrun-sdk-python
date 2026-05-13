@@ -1398,6 +1398,13 @@ def _create_function_with_signature(
     )
     if alias_map:
         existing_param_names = {p.name for p in parameters}
+        # 防御性 sanitize: alias 要落到 inspect.Parameter 上, 非法字符
+        # （如 ``x-access-id``）会触发 ValueError。当前 alias 仅由
+        # ``_maybe_add_body_alias`` 写入 "query", 但未来可能扩展。
+        # 若 alias 被 sanitize, 同时把 sanitized 名字加进 alias_map 指向同一
+        # canonical, 以便 _normalize_tool_arguments 在调用方使用签名暴露的
+        # sanitized 名字时也能正确翻译。
+        extra_alias_entries: Dict[str, str] = {}
         for alias, canonical in alias_map.items():
             canonical_field = args_schema.model_fields.get(canonical)
             alias_annotation = (
@@ -1410,14 +1417,13 @@ def _create_function_with_signature(
                 and alias_annotation is not None
             ):
                 alias_annotation = Optional[alias_annotation]
-            # 防御性 sanitize: alias 同样要落到 inspect.Parameter 上, 非法字符
-            # （如 ``x-access-id``）会触发 ValueError。当前 alias 仅由
-            # ``_maybe_add_body_alias`` 写入 "query", 但未来可能扩展。
             alias_name = (
                 alias
                 if alias.isidentifier()
                 else _sanitize_python_identifier(alias)
             )
+            if alias_name != alias and alias_name not in alias_map:
+                extra_alias_entries[alias_name] = canonical
             if alias_name in existing_param_names:
                 continue
             existing_param_names.add(alias_name)
@@ -1429,6 +1435,11 @@ def _create_function_with_signature(
                     annotation=alias_annotation,
                 )
             )
+        if extra_alias_entries:
+            # 合并到 args_schema 的 alias map (避免就地改动原 dict)
+            merged = dict(alias_map)
+            merged.update(extra_alias_entries)
+            setattr(args_schema, "__agentrun_argument_aliases__", merged)
 
     # 创建实际执行函数
     def impl(**kwargs):
@@ -1709,7 +1720,8 @@ def _sanitize_python_identifier(name: str) -> str:
     if not sanitized:
         sanitized = "field"
     if sanitized[0].isdigit():
-        # Pydantic 不允许字段名以下划线开头, 因此用字母前缀.
+        # 数字开头不是合法 Python 标识符; 又因为 Pydantic 不允许字段名以
+        # 下划线开头, 这里只能加字母前缀 "field_" 而不是直接补 "_".
         sanitized = "field_" + sanitized
     if sanitized in _PY_KEYWORDS:
         sanitized = sanitized + "_"
