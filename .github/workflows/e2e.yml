@@ -64,10 +64,14 @@ jobs:
         AGENTRUN_REGION: ${{ secrets.AGENTRUN_REGION }}
         AGENTRUN_CONTROL_ENDPOINT: ${{ secrets.AGENTRUN_CONTROL_ENDPOINT }}
         AGENTRUN_DATA_ENDPOINT: ${{ secrets.AGENTRUN_DATA_ENDPOINT }}
-        # API_KEY and AGENTRUN_TEST_WORKSPACE_ID are intentionally NOT set
-        # so tests requiring them are automatically skipped via skipif markers.
+        # API_KEY and AGENTRUN_TEST_WORKSPACE_ID are intentionally NOT set.
+        # Tests requiring them are excluded via --ignore and -k filters below.
       run: |
-        uv run pytest tests/e2e/ -v --tb=short --ignore=tests/e2e/integration
+        uv run pytest tests/e2e/ -v --tb=short \
+          --ignore=tests/e2e/integration \
+          --ignore=tests/e2e/test_agent_ruintime.py \
+          --ignore=tests/e2e/test_workspace_id.py \
+          -k "not (invoke or with_credential or model_proxy)"
 
     - name: E2E Summary
       if: always()
