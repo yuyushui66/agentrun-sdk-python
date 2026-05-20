@@ -18,6 +18,7 @@ from agentrun.agent_runtime.model import (
     AgentRuntimeCreateInput,
     AgentRuntimeListInput,
 )
+from agentrun.utils.config import Config
 from agentrun.utils.exception import ResourceNotExistError
 
 CONTROL_API_PATH = "agentrun.agent_runtime.client.AgentRuntimeControlAPI"
@@ -276,7 +277,11 @@ class TestClientCreateWorkspaceResolution:
         )
         client.create(inp)
 
-        mock_resolve.assert_called_once_with("my-ws", None)
+        # 解析器收到 (name, effective_config)；effective_config 应是 Config 实例
+        mock_resolve.assert_called_once()
+        args, _ = mock_resolve.call_args
+        assert args[0] == "my-ws"
+        assert isinstance(args[1], Config)
         # 调用 API 前，应把 workspace_name 清空且 workspace_id 写好
         assert inp.workspace_id == "ws-resolved"
         assert inp.workspace_name is None
@@ -332,7 +337,10 @@ class TestClientCreateWorkspaceResolution:
         )
         asyncio.run(client.create_async(inp))
 
-        mock_resolve_async.assert_awaited_once_with("my-ws", None)
+        mock_resolve_async.assert_awaited_once()
+        args, _ = mock_resolve_async.call_args
+        assert args[0] == "my-ws"
+        assert isinstance(args[1], Config)
         assert inp.workspace_id == "ws-resolved-async"
         assert inp.workspace_name is None
 
@@ -370,8 +378,14 @@ class TestClientListWorkspaceResolution:
         )
         client.list(inp)
 
-        mock_resolve_one.assert_called_once_with("my-ws", None)
-        mock_resolve_many.assert_called_once_with("ws-a,ws-b", None)
+        mock_resolve_one.assert_called_once()
+        one_args, _ = mock_resolve_one.call_args
+        assert one_args[0] == "my-ws"
+        assert isinstance(one_args[1], Config)
+        mock_resolve_many.assert_called_once()
+        many_args, _ = mock_resolve_many.call_args
+        assert many_args[0] == "ws-a,ws-b"
+        assert isinstance(many_args[1], Config)
         assert inp.workspace_id == "ws-1"
         assert inp.workspace_ids == "ws-1,ws-2"
         assert inp.workspace_name is None
@@ -439,7 +453,238 @@ class TestClientListWorkspaceResolution:
         )
         asyncio.run(client.list_async(inp))
 
-        mock_resolve_one_async.assert_awaited_once_with("my-ws", None)
-        mock_resolve_many_async.assert_awaited_once_with("ws-a,ws-b", None)
+        mock_resolve_one_async.assert_awaited_once()
+        one_args, _ = mock_resolve_one_async.call_args
+        assert one_args[0] == "my-ws"
+        assert isinstance(one_args[1], Config)
+        mock_resolve_many_async.assert_awaited_once()
+        many_args, _ = mock_resolve_many_async.call_args
+        assert many_args[0] == "ws-a,ws-b"
+        assert isinstance(many_args[1], Config)
         assert inp.workspace_id == "ws-1"
         assert inp.workspace_ids == "ws-1,ws-2"
+
+
+class TestClientEffectiveConfig:
+    """`self.config + method config` 合并后传入 workspace 解析器，
+    避免解析与后续 OpenAPI 调用走不同凭证 / region。"""
+
+    @patch(CONTROL_API_PATH)
+    @patch(
+        "agentrun.agent_runtime.client.resolve_workspace_id_by_name",
+        return_value="ws-resolved",
+    )
+    def test_create_merges_client_config_when_method_config_none(
+        self, mock_resolve, mock_control_api_class
+    ):
+        from agentrun.agent_runtime.client import AgentRuntimeClient
+
+        mock_control_api = MagicMock()
+        mock_data = MagicMock()
+        mock_data.agent_runtime_id = "ar-1"
+        mock_data.to_map.return_value = {
+            "agentRuntimeId": "ar-1",
+            "agentRuntimeName": "n",
+            "status": "READY",
+        }
+        mock_control_api.create_agent_runtime.return_value = mock_data
+        mock_control_api_class.return_value = mock_control_api
+
+        client_cfg = Config(
+            access_key_id="ak-client",
+            access_key_secret="sk-client",
+            region_id="cn-hangzhou",
+        )
+        client = AgentRuntimeClient(config=client_cfg)
+        inp = AgentRuntimeCreateInput(
+            agent_runtime_name="n",
+            workspace_name="my-ws",
+            container_configuration=AgentRuntimeContainer(
+                image="img", port=9000
+            ),
+        )
+        # method-level config 故意不传，期望解析器拿到 client_cfg 的凭证
+        client.create(inp)
+
+        mock_resolve.assert_called_once()
+        args, _ = mock_resolve.call_args
+        cfg_arg = args[1]
+        assert isinstance(cfg_arg, Config)
+        assert cfg_arg.get_access_key_id() == "ak-client"
+        assert cfg_arg.get_region_id() == "cn-hangzhou"
+
+    @patch(CONTROL_API_PATH)
+    @patch(
+        "agentrun.agent_runtime.client.resolve_workspace_id_by_name_async",
+        new_callable=AsyncMock,
+    )
+    def test_create_async_method_config_overrides_client_config(
+        self, mock_resolve_async, mock_control_api_class
+    ):
+        from agentrun.agent_runtime.client import AgentRuntimeClient
+
+        mock_resolve_async.return_value = "ws-resolved-async"
+        mock_control_api = MagicMock()
+        mock_data = MagicMock()
+        mock_data.agent_runtime_id = "ar-1"
+        mock_data.to_map.return_value = {
+            "agentRuntimeId": "ar-1",
+            "agentRuntimeName": "n",
+            "status": "READY",
+        }
+        mock_control_api.create_agent_runtime_async = AsyncMock(
+            return_value=mock_data
+        )
+        mock_control_api_class.return_value = mock_control_api
+
+        client_cfg = Config(
+            access_key_id="ak-client",
+            access_key_secret="sk-client",
+            region_id="cn-hangzhou",
+        )
+        method_cfg = Config(
+            access_key_id="ak-method",
+            access_key_secret="sk-method",
+            region_id="cn-shanghai",
+        )
+        client = AgentRuntimeClient(config=client_cfg)
+        inp = AgentRuntimeCreateInput(
+            agent_runtime_name="n",
+            workspace_name="my-ws",
+            container_configuration=AgentRuntimeContainer(
+                image="img", port=9000
+            ),
+        )
+        asyncio.run(client.create_async(inp, config=method_cfg))
+
+        mock_resolve_async.assert_awaited_once()
+        args, _ = mock_resolve_async.call_args
+        cfg_arg = args[1]
+        # method config 应该覆盖 client config（Config.update 后者胜出）
+        assert cfg_arg.get_access_key_id() == "ak-method"
+        assert cfg_arg.get_region_id() == "cn-shanghai"
+
+    @patch(CONTROL_API_PATH)
+    @patch(
+        "agentrun.agent_runtime.client.resolve_workspace_id_by_name",
+        return_value="ws-1",
+    )
+    def test_list_merges_client_config_when_method_config_none(
+        self, mock_resolve, mock_control_api_class
+    ):
+        from agentrun.agent_runtime.client import AgentRuntimeClient
+
+        mock_control_api = MagicMock()
+        mock_result = MagicMock()
+        mock_result.items = []
+        mock_control_api.list_agent_runtimes.return_value = mock_result
+        mock_control_api_class.return_value = mock_control_api
+
+        client_cfg = Config(
+            access_key_id="ak-list",
+            access_key_secret="sk-list",
+            region_id="cn-beijing",
+        )
+        client = AgentRuntimeClient(config=client_cfg)
+        inp = AgentRuntimeListInput(workspace_name="my-ws")
+        client.list(inp)
+
+        mock_resolve.assert_called_once()
+        args, _ = mock_resolve.call_args
+        cfg_arg = args[1]
+        assert cfg_arg.get_access_key_id() == "ak-list"
+        assert cfg_arg.get_region_id() == "cn-beijing"
+
+    @patch(CONTROL_API_PATH)
+    @patch(
+        "agentrun.agent_runtime.client.resolve_workspace_ids_by_names_async",
+        new_callable=AsyncMock,
+    )
+    def test_list_async_merges_client_config_for_plural(
+        self, mock_resolve_many_async, mock_control_api_class
+    ):
+        from agentrun.agent_runtime.client import AgentRuntimeClient
+
+        mock_resolve_many_async.return_value = "ws-1,ws-2"
+        mock_control_api = MagicMock()
+        mock_result = MagicMock()
+        mock_result.items = []
+        mock_control_api.list_agent_runtimes_async = AsyncMock(
+            return_value=mock_result
+        )
+        mock_control_api_class.return_value = mock_control_api
+
+        client_cfg = Config(
+            access_key_id="ak-list-async",
+            access_key_secret="sk-list-async",
+            region_id="cn-beijing",
+        )
+        client = AgentRuntimeClient(config=client_cfg)
+        inp = AgentRuntimeListInput(workspace_names="ws-a,ws-b")
+        asyncio.run(client.list_async(inp))
+
+        mock_resolve_many_async.assert_awaited_once()
+        args, _ = mock_resolve_many_async.call_args
+        cfg_arg = args[1]
+        assert cfg_arg.get_access_key_id() == "ak-list-async"
+        assert cfg_arg.get_region_id() == "cn-beijing"
+
+
+class TestClientEmptyWorkspaceName:
+    """空字符串的 workspace_name 应当显式报错而非被默默吞掉。"""
+
+    @patch(CONTROL_API_PATH)
+    def test_create_empty_workspace_name_raises(self, mock_control_api_class):
+        from agentrun.agent_runtime.client import AgentRuntimeClient
+
+        mock_control_api_class.return_value = MagicMock()
+        client = AgentRuntimeClient()
+        inp = AgentRuntimeCreateInput(
+            agent_runtime_name="n",
+            workspace_name="",
+            container_configuration=AgentRuntimeContainer(
+                image="img", port=9000
+            ),
+        )
+        with pytest.raises(ValueError, match="non-empty"):
+            client.create(inp)
+
+    @patch(CONTROL_API_PATH)
+    def test_create_async_empty_workspace_name_raises(
+        self, mock_control_api_class
+    ):
+        from agentrun.agent_runtime.client import AgentRuntimeClient
+
+        mock_control_api_class.return_value = MagicMock()
+        client = AgentRuntimeClient()
+        inp = AgentRuntimeCreateInput(
+            agent_runtime_name="n",
+            workspace_name="",
+            container_configuration=AgentRuntimeContainer(
+                image="img", port=9000
+            ),
+        )
+        with pytest.raises(ValueError, match="non-empty"):
+            asyncio.run(client.create_async(inp))
+
+    @patch(CONTROL_API_PATH)
+    def test_list_empty_workspace_name_raises(self, mock_control_api_class):
+        from agentrun.agent_runtime.client import AgentRuntimeClient
+
+        mock_control_api_class.return_value = MagicMock()
+        client = AgentRuntimeClient()
+        inp = AgentRuntimeListInput(workspace_name="")
+        with pytest.raises(ValueError, match="non-empty"):
+            client.list(inp)
+
+    @patch(CONTROL_API_PATH)
+    def test_list_async_empty_workspace_name_raises(
+        self, mock_control_api_class
+    ):
+        from agentrun.agent_runtime.client import AgentRuntimeClient
+
+        mock_control_api_class.return_value = MagicMock()
+        client = AgentRuntimeClient()
+        inp = AgentRuntimeListInput(workspace_name="")
+        with pytest.raises(ValueError, match="non-empty"):
+            asyncio.run(client.list_async(inp))

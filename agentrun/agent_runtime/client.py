@@ -98,9 +98,10 @@ class AgentRuntimeClient:
                 "workspace_id and workspace_name are mutually exclusive; please"
                 " only set one of them."
             )
-        if input.workspace_name:
+        if input.workspace_name is not None:
+            cfg = Config.with_configs(self.config, config)
             input.workspace_id = await resolve_workspace_id_by_name_async(
-                input.workspace_name, config
+                input.workspace_name, cfg
             )
             input.workspace_name = None
 
@@ -156,9 +157,10 @@ class AgentRuntimeClient:
                 "workspace_id and workspace_name are mutually exclusive; please"
                 " only set one of them."
             )
-        if input.workspace_name:
+        if input.workspace_name is not None:
+            cfg = Config.with_configs(self.config, config)
             input.workspace_id = resolve_workspace_id_by_name(
-                input.workspace_name, config
+                input.workspace_name, cfg
             )
             input.workspace_name = None
 
@@ -390,18 +392,22 @@ class AgentRuntimeClient:
                     "workspace_ids and workspace_names are mutually exclusive;"
                     " please only set one of them."
                 )
-            if input.workspace_name:
-                input.workspace_id = await resolve_workspace_id_by_name_async(
-                    input.workspace_name, config
-                )
-                input.workspace_name = None
-            if input.workspace_names:
-                input.workspace_ids = (
-                    await resolve_workspace_ids_by_names_async(
-                        input.workspace_names, config
+            if input.workspace_name is not None or input.workspace_names:
+                cfg = Config.with_configs(self.config, config)
+                if input.workspace_name is not None:
+                    input.workspace_id = (
+                        await resolve_workspace_id_by_name_async(
+                            input.workspace_name, cfg
+                        )
                     )
-                )
-                input.workspace_names = None
+                    input.workspace_name = None
+                if input.workspace_names:
+                    input.workspace_ids = (
+                        await resolve_workspace_ids_by_names_async(
+                            input.workspace_names, cfg
+                        )
+                    )
+                    input.workspace_names = None
 
             results = await self.__control_api.list_agent_runtimes_async(
                 ListAgentRuntimesRequest().from_map(input.model_dump()),
@@ -450,16 +456,18 @@ class AgentRuntimeClient:
                     "workspace_ids and workspace_names are mutually exclusive;"
                     " please only set one of them."
                 )
-            if input.workspace_name:
-                input.workspace_id = resolve_workspace_id_by_name(
-                    input.workspace_name, config
-                )
-                input.workspace_name = None
-            if input.workspace_names:
-                input.workspace_ids = resolve_workspace_ids_by_names(
-                    input.workspace_names, config
-                )
-                input.workspace_names = None
+            if input.workspace_name is not None or input.workspace_names:
+                cfg = Config.with_configs(self.config, config)
+                if input.workspace_name is not None:
+                    input.workspace_id = resolve_workspace_id_by_name(
+                        input.workspace_name, cfg
+                    )
+                    input.workspace_name = None
+                if input.workspace_names:
+                    input.workspace_ids = resolve_workspace_ids_by_names(
+                        input.workspace_names, cfg
+                    )
+                    input.workspace_names = None
 
             results = self.__control_api.list_agent_runtimes(
                 ListAgentRuntimesRequest().from_map(input.model_dump()),
