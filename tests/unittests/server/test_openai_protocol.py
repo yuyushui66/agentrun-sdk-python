@@ -1098,6 +1098,32 @@ class TestOpenAIReasoningContent:
         assert message["content"] == "answer"
         assert message["reasoning_content"] == "thinking"
 
+    def test_non_stream_suppresses_reasoning_when_thinking_disabled(
+        self, monkeypatch
+    ):
+        monkeypatch.setenv("MODEL_PARAMETER_RULES", '{"thinking": false}')
+
+        def invoke_agent(request: AgentRequest):
+            return [
+                AgentEvent(
+                    event=EventType.REASONING,
+                    data={"delta": "thinking"},
+                ),
+                AgentEvent(event=EventType.TEXT, data={"delta": "answer"}),
+            ]
+
+        response = self.get_client(invoke_agent).post(
+            "/openai/v1/chat/completions",
+            json={
+                "messages": [{"role": "user", "content": "Hi"}],
+                "stream": False,
+            },
+        )
+
+        message = response.json()["choices"][0]["message"]
+        assert message["content"] == "answer"
+        assert "reasoning_content" not in message
+
     def test_stream_promotes_chunk_additional_kwargs_reasoning(
         self, monkeypatch
     ):
@@ -1120,3 +1146,25 @@ class TestOpenAIReasoningContent:
         events = _openai_sse_events(response)
         assert events[0]["choices"][0]["delta"]["reasoning_content"] == "thinking"
         assert events[1]["choices"][0]["delta"]["content"] == "answer"
+
+    def test_parses_request_message_reasoning_content(self):
+        captured_request = {}
+
+        def invoke_agent(request: AgentRequest):
+            captured_request["messages"] = request.messages
+            return "Done"
+
+        response = self.get_client(invoke_agent).post(
+            "/openai/v1/chat/completions",
+            json={
+                "messages": [{
+                    "role": "assistant",
+                    "content": "answer",
+                    "reasoning_content": "thinking",
+                }],
+                "stream": False,
+            },
+        )
+
+        assert response.status_code == 200
+        assert captured_request["messages"][0].reasoning_content == "thinking"

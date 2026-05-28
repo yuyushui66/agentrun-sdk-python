@@ -430,7 +430,39 @@ AGUI_EXPECTED = {
             },
             {"type": "TEXT_MESSAGE_END", "hasMessageId": True},
             {"type": "RUN_FINISHED", "hasThreadId": True, "hasRunId": True},
-        ]
+        ],
+        [
+            {"type": "RUN_STARTED", "hasThreadId": True, "hasRunId": True},
+            {
+                "type": "TOOL_CALL_START",
+                "toolCallName": "get_time",
+                "hasToolCallId": True,
+            },
+            {
+                "type": "TOOL_CALL_ARGS",
+                "delta": "{}",
+                "hasToolCallId": True,
+            },
+            {"type": "TOOL_CALL_END", "hasToolCallId": True},
+            {
+                "type": "TOOL_CALL_RESULT",
+                "role": "tool",
+                "hasToolCallId": True,
+                "hasMessageId": True,
+            },
+            {
+                "type": "TEXT_MESSAGE_START",
+                "role": "assistant",
+                "hasMessageId": True,
+            },
+            {
+                "type": "TEXT_MESSAGE_CONTENT",
+                "delta": "工具结果已收到: 2024-01-01 12:00:00",
+                "hasMessageId": True,
+            },
+            {"type": "TEXT_MESSAGE_END", "hasMessageId": True},
+            {"type": "RUN_FINISHED", "hasThreadId": True, "hasRunId": True},
+        ],
     ],
 }
 
@@ -564,6 +596,15 @@ OPENAI_STREAM_EXPECTED = {
         },
         {
             "object": "chat.completion.chunk",
+            "tool_calls": [{
+                "name": None,
+                "arguments": "{}",
+                "has_id": False,
+            }],
+            "finish_reason": None,
+        },
+        {
+            "object": "chat.completion.chunk",
             "delta_role": "assistant",
             "delta_content": "工具结果已收到: 2024-01-01 12:00:00",
             "finish_reason": None,
@@ -623,7 +664,7 @@ OPENAI_NONSTREAM_EXPECTED = {
         "content": "工具结果已收到: 2024-01-01 12:00:00",
         "tool_calls": [{
             "name": "get_time",
-            "arguments": "",
+            "arguments": "{}",
             "has_id": True,
         }],
         "finish_reason": "tool_calls",
@@ -810,9 +851,7 @@ class TestAstreamEvents:
     async def test_convert_python_3_10(self):
         from langchain.messages import (
             AIMessage,
-            AIMessageChunk,
             HumanMessage,
-            SystemMessage,
         )
 
         events = [

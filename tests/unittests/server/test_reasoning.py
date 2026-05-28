@@ -30,10 +30,27 @@ def test_model_parameter_rules_list_enables_thinking():
     assert get_thinking_value_from_env(env) is True
 
 
+def test_model_parameter_rules_nested_parameters_disables_thinking():
+    env = {
+        "MODEL_PARAMETER_RULES": (
+            '{"parameters": [{"name": "thinking", "default": "false"}]}'
+        )
+    }
+
+    assert is_thinking_enabled_from_env(env) is False
+    assert get_thinking_value_from_env(env) is False
+
+
 def test_model_parameter_rules_invalid_json_disables_thinking():
     env = {"MODEL_PARAMETER_RULES": "not json"}
 
     assert is_thinking_enabled_from_env(env) is False
+
+
+def test_get_reasoning_content_from_attribute():
+    chunk = SimpleNamespace(reasoning_content="thinking")
+
+    assert get_reasoning_content(chunk) == "thinking"
 
 
 def test_get_reasoning_content_from_additional_kwargs():

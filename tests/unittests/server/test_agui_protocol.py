@@ -1281,3 +1281,63 @@ class TestAGUIReasoningContent:
         )
         assert reasoning_event["delta"] == "thinking"
         assert text_event["delta"] == "answer"
+
+    def test_text_addition_reasoning_is_emitted_before_text(
+        self, monkeypatch
+    ):
+        monkeypatch.setenv("MODEL_PARAMETER_RULES", '{"thinking": true}')
+
+        async def invoke_agent(request: AgentRequest):
+            yield AgentEvent(
+                event=EventType.TEXT,
+                data={"delta": "answer"},
+                addition={
+                    "additional_kwargs": {"reasoning_content": "thinking"}
+                },
+            )
+
+        response = self.get_client(invoke_agent).post(
+            "/ag-ui/agent",
+            json={"messages": [{"role": "user", "content": "Hi"}]},
+        )
+
+        events = _agui_sse_events(response)
+        types = [event["type"] for event in events]
+        assert types.index("REASONING_MESSAGE_CONTENT") < types.index(
+            "TEXT_MESSAGE_START"
+        )
+        assert "REASONING_MESSAGE_END" in types
+        assert "REASONING_END" in types
+        text_event = next(
+            event for event in events if event["type"] == "TEXT_MESSAGE_CONTENT"
+        )
+        assert text_event["delta"] == "answer"
+        assert "additional_kwargs" not in text_event
+
+    def test_text_addition_reasoning_is_stripped_when_thinking_disabled(
+        self, monkeypatch
+    ):
+        monkeypatch.setenv("MODEL_PARAMETER_RULES", '{"thinking": false}')
+
+        async def invoke_agent(request: AgentRequest):
+            yield AgentEvent(
+                event=EventType.TEXT,
+                data={"delta": "answer"},
+                addition={
+                    "additional_kwargs": {"reasoning_content": "thinking"}
+                },
+            )
+
+        response = self.get_client(invoke_agent).post(
+            "/ag-ui/agent",
+            json={"messages": [{"role": "user", "content": "Hi"}]},
+        )
+
+        events = _agui_sse_events(response)
+        types = [event["type"] for event in events]
+        assert all(not event_type.startswith("REASONING") for event_type in types)
+        text_event = next(
+            event for event in events if event["type"] == "TEXT_MESSAGE_CONTENT"
+        )
+        assert text_event["delta"] == "answer"
+        assert "additional_kwargs" not in text_event
