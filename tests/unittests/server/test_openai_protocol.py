@@ -4,7 +4,7 @@
 """
 
 import json
-from typing import cast
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 import pytest
@@ -49,6 +49,14 @@ class TestOpenAIProtocolHandler:
         )
         handler = OpenAIProtocolHandler(config)
         assert handler.get_model_name() == "custom-model"
+
+
+def _openai_sse_events(response):
+    return [
+        json.loads(line[6:])
+        for line in response.text.splitlines()
+        if line.startswith("data: {")
+    ]
 
 
 class TestOpenAIProtocolEndpoints:
@@ -1006,3 +1014,157 @@ class TestOpenAIProtocolRawEvent:
         tool_calls = data["choices"][0]["message"]["tool_calls"]
         assert len(tool_calls) == 1
         assert tool_calls[0]["function"]["arguments"] == ""
+
+
+class TestOpenAIReasoningContent:
+    """测试 OpenAI reasoning_content 输出开关"""
+
+    def get_client(self, invoke_agent):
+        server = AgentRunServer(invoke_agent=invoke_agent)
+        return TestClient(server.as_fastapi_app())
+
+    def test_stream_includes_reasoning_when_thinking_enabled(self, monkeypatch):
+        monkeypatch.setenv("MODEL_PARAMETER_RULES", '{"thinking": true}')
+
+        async def invoke_agent(request: AgentRequest):
+            yield AgentEvent(
+                event=EventType.REASONING,
+                data={"delta": "thinking"},
+            )
+            yield AgentEvent(event=EventType.TEXT, data={"delta": "answer"})
+
+        response = self.get_client(invoke_agent).post(
+            "/openai/v1/chat/completions",
+            json={
+                "messages": [{"role": "user", "content": "Hi"}],
+                "stream": True,
+            },
+        )
+
+        events = _openai_sse_events(response)
+        assert events[0]["choices"][0]["delta"]["reasoning_content"] == "thinking"
+        assert events[1]["choices"][0]["delta"]["content"] == "answer"
+
+    def test_stream_suppresses_reasoning_when_thinking_disabled(
+        self, monkeypatch
+    ):
+        monkeypatch.setenv("MODEL_PARAMETER_RULES", '{"thinking": false}')
+
+        async def invoke_agent(request: AgentRequest):
+            yield AgentEvent(
+                event=EventType.REASONING,
+                data={"delta": "thinking"},
+            )
+            yield AgentEvent(event=EventType.TEXT, data={"delta": "answer"})
+
+        response = self.get_client(invoke_agent).post(
+            "/openai/v1/chat/completions",
+            json={
+                "messages": [{"role": "user", "content": "Hi"}],
+                "stream": True,
+            },
+        )
+
+        events = _openai_sse_events(response)
+        assert all(
+            "reasoning_content" not in event["choices"][0]["delta"]
+            for event in events
+        )
+        assert events[0]["choices"][0]["delta"]["content"] == "answer"
+
+    def test_non_stream_includes_reasoning_when_thinking_enabled(
+        self, monkeypatch
+    ):
+        monkeypatch.setenv("MODEL_PARAMETER_RULES", '{"thinking": true}')
+
+        def invoke_agent(request: AgentRequest):
+            return [
+                AgentEvent(
+                    event=EventType.REASONING,
+                    data={"delta": "thinking"},
+                ),
+                AgentEvent(event=EventType.TEXT, data={"delta": "answer"}),
+            ]
+
+        response = self.get_client(invoke_agent).post(
+            "/openai/v1/chat/completions",
+            json={
+                "messages": [{"role": "user", "content": "Hi"}],
+                "stream": False,
+            },
+        )
+
+        message = response.json()["choices"][0]["message"]
+        assert message["content"] == "answer"
+        assert message["reasoning_content"] == "thinking"
+
+    def test_non_stream_suppresses_reasoning_when_thinking_disabled(
+        self, monkeypatch
+    ):
+        monkeypatch.setenv("MODEL_PARAMETER_RULES", '{"thinking": false}')
+
+        def invoke_agent(request: AgentRequest):
+            return [
+                AgentEvent(
+                    event=EventType.REASONING,
+                    data={"delta": "thinking"},
+                ),
+                AgentEvent(event=EventType.TEXT, data={"delta": "answer"}),
+            ]
+
+        response = self.get_client(invoke_agent).post(
+            "/openai/v1/chat/completions",
+            json={
+                "messages": [{"role": "user", "content": "Hi"}],
+                "stream": False,
+            },
+        )
+
+        message = response.json()["choices"][0]["message"]
+        assert message["content"] == "answer"
+        assert "reasoning_content" not in message
+
+    def test_stream_promotes_chunk_additional_kwargs_reasoning(
+        self, monkeypatch
+    ):
+        monkeypatch.setenv("MODEL_PARAMETER_RULES", '{"thinking": true}')
+
+        async def invoke_agent(request: AgentRequest):
+            yield SimpleNamespace(
+                content="answer",
+                additional_kwargs={"reasoning_content": "thinking"},
+            )
+
+        response = self.get_client(invoke_agent).post(
+            "/openai/v1/chat/completions",
+            json={
+                "messages": [{"role": "user", "content": "Hi"}],
+                "stream": True,
+            },
+        )
+
+        events = _openai_sse_events(response)
+        assert events[0]["choices"][0]["delta"]["reasoning_content"] == "thinking"
+        assert events[1]["choices"][0]["delta"]["content"] == "answer"
+
+    def test_parses_request_message_reasoning_content(self):
+        captured_request = {}
+
+        def invoke_agent(request: AgentRequest):
+            captured_request["messages"] = request.messages
+            return "Done"
+
+        response = self.get_client(invoke_agent).post(
+            "/openai/v1/chat/completions",
+            json={
+                "messages": [{
+                    "role": "assistant",
+                    "content": "answer",
+                    "reasoning_content": "thinking",
+                }],
+                "stream": False,
+            },
+        )
+
+        assert response.status_code == 200
+        assert captured_request["messages"][0].reasoning_content == "thinking"
