@@ -1196,7 +1196,7 @@ class TestAGUIProtocolToolCallBranches:
 
 
 class TestAGUIReasoningContent:
-    """测试 AG-UI reasoning 事件输出开关"""
+    """测试 AG-UI reasoning 事件输出"""
 
     def get_client(self, invoke_agent):
         server = AgentRunServer(invoke_agent=invoke_agent)
@@ -1228,7 +1228,7 @@ class TestAGUIReasoningContent:
         assert reasoning_event["delta"] == "thinking"
         assert "TEXT_MESSAGE_CONTENT" in types
 
-    def test_stream_suppresses_reasoning_when_thinking_disabled(
+    def test_stream_includes_reasoning_when_thinking_disabled(
         self, monkeypatch
     ):
         monkeypatch.setenv("MODEL_PARAMETER_RULES", '{"thinking": false}')
@@ -1246,9 +1246,14 @@ class TestAGUIReasoningContent:
         )
 
         events = _agui_sse_events(response)
-        assert "REASONING_MESSAGE_CONTENT" not in [
-            event["type"] for event in events
-        ]
+        types = [event["type"] for event in events]
+        reasoning_event = next(
+            event
+            for event in events
+            if event["type"] == "REASONING_MESSAGE_CONTENT"
+        )
+        assert "REASONING_START" in types
+        assert reasoning_event["delta"] == "thinking"
         text_event = next(
             event for event in events if event["type"] == "TEXT_MESSAGE_CONTENT"
         )
@@ -1257,7 +1262,7 @@ class TestAGUIReasoningContent:
     def test_stream_promotes_chunk_additional_kwargs_reasoning(
         self, monkeypatch
     ):
-        monkeypatch.setenv("MODEL_PARAMETER_RULES", '{"thinking": true}')
+        monkeypatch.setenv("MODEL_PARAMETER_RULES", '{"thinking": false}')
 
         async def invoke_agent(request: AgentRequest):
             yield SimpleNamespace(
@@ -1282,9 +1287,7 @@ class TestAGUIReasoningContent:
         assert reasoning_event["delta"] == "thinking"
         assert text_event["delta"] == "answer"
 
-    def test_text_addition_reasoning_is_emitted_before_text(
-        self, monkeypatch
-    ):
+    def test_text_addition_reasoning_is_emitted_before_text(self, monkeypatch):
         monkeypatch.setenv("MODEL_PARAMETER_RULES", '{"thinking": true}')
 
         async def invoke_agent(request: AgentRequest):
@@ -1314,7 +1317,7 @@ class TestAGUIReasoningContent:
         assert text_event["delta"] == "answer"
         assert "additional_kwargs" not in text_event
 
-    def test_text_addition_reasoning_is_stripped_when_thinking_disabled(
+    def test_text_addition_reasoning_is_emitted_when_thinking_disabled(
         self, monkeypatch
     ):
         monkeypatch.setenv("MODEL_PARAMETER_RULES", '{"thinking": false}')
@@ -1335,7 +1338,11 @@ class TestAGUIReasoningContent:
 
         events = _agui_sse_events(response)
         types = [event["type"] for event in events]
-        assert all(not event_type.startswith("REASONING") for event_type in types)
+        assert types.index("REASONING_MESSAGE_CONTENT") < types.index(
+            "TEXT_MESSAGE_START"
+        )
+        assert "REASONING_MESSAGE_END" in types
+        assert "REASONING_END" in types
         text_event = next(
             event for event in events if event["type"] == "TEXT_MESSAGE_CONTENT"
         )
