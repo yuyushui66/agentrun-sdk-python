@@ -10,9 +10,12 @@ from urllib.parse import urlparse, urlunparse
 
 import httpx
 
-from agentrun.tool.model import ToolInfo, ToolSchema
+from agentrun.tool.model import ToolInfo
 from agentrun.utils.config import Config
 from agentrun.utils.log import logger
+from agentrun.utils.ram_signature import get_agentrun_signed_headers
+
+_MCP_METADATA_TIMEOUT_SECONDS = 30.0
 
 
 def _get_or_create_event_loop() -> asyncio.AbstractEventLoop:
@@ -28,9 +31,6 @@ def _get_or_create_event_loop() -> asyncio.AbstractEventLoop:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         return loop
-
-
-from agentrun.utils.ram_signature import get_agentrun_signed_headers
 
 
 class _AgentrunRamAuth(httpx.Auth):
@@ -144,6 +144,54 @@ class ToolMCPSession:
         """是否使用 Streamable HTTP 传输 / Whether to use Streamable HTTP transport"""
         return self.session_affinity == "MCP_STREAMABLE"
 
+    def _metadata_timeout_seconds(self) -> float:
+        timeout = self.config.get_timeout()
+        if timeout and timeout > 0:
+            return min(float(timeout), _MCP_METADATA_TIMEOUT_SECONDS)
+        return _MCP_METADATA_TIMEOUT_SECONDS
+
+    def _invoke_timeout_seconds(self) -> float:
+        timeout = self.config.get_timeout()
+        if timeout and timeout > 0:
+            return float(timeout)
+        return 600.0
+
+    async def _wait_for_mcp_request(
+        self,
+        awaitable: Any,
+        operation: str,
+        timeout: float,
+    ) -> Any:
+        try:
+            return await asyncio.wait_for(awaitable, timeout=timeout)
+        except asyncio.TimeoutError as exc:
+            raise TimeoutError(
+                f"MCP {operation} timed out after {timeout:g}s for endpoint"
+                f" {self.endpoint}"
+            ) from exc
+
+    def _find_mcp_timeout_error(
+        self, exc: BaseException
+    ) -> Optional[TimeoutError]:
+        if isinstance(exc, TimeoutError) and str(exc).startswith("MCP "):
+            return exc
+
+        nested_exceptions = getattr(exc, "exceptions", None)
+        if not nested_exceptions:
+            return None
+
+        for nested_exc in nested_exceptions:
+            timeout_error = self._find_mcp_timeout_error(nested_exc)
+            if timeout_error is not None:
+                return timeout_error
+
+        return None
+
+    def _raise_mcp_timeout_if_present(self, exc: BaseException) -> None:
+        timeout_error = self._find_mcp_timeout_error(exc)
+        if timeout_error is not None:
+            raise timeout_error
+
     def _build_ram_auth(self, url: str) -> tuple:
         """当目标是 agentrun-data 域名时，改写 URL 并返回 httpx Auth handler。
 
@@ -199,8 +247,17 @@ class ToolMCPSession:
                     async with ClientSession(
                         read_stream, write_stream
                     ) as session:
-                        await session.initialize()
-                        result = await session.list_tools()
+                        metadata_timeout = self._metadata_timeout_seconds()
+                        await self._wait_for_mcp_request(
+                            session.initialize(),
+                            "initialize",
+                            metadata_timeout,
+                        )
+                        result = await self._wait_for_mcp_request(
+                            session.list_tools(),
+                            "list_tools",
+                            metadata_timeout,
+                        )
                         return [
                             ToolInfo.from_mcp_tool(tool)
                             for tool in result.tools
@@ -215,8 +272,17 @@ class ToolMCPSession:
                     async with ClientSession(
                         read_stream, write_stream
                     ) as session:
-                        await session.initialize()
-                        result = await session.list_tools()
+                        metadata_timeout = self._metadata_timeout_seconds()
+                        await self._wait_for_mcp_request(
+                            session.initialize(),
+                            "initialize",
+                            metadata_timeout,
+                        )
+                        result = await self._wait_for_mcp_request(
+                            session.list_tools(),
+                            "list_tools",
+                            metadata_timeout,
+                        )
                         return [
                             ToolInfo.from_mcp_tool(tool)
                             for tool in result.tools
@@ -226,6 +292,9 @@ class ToolMCPSession:
                 "mcp package is not installed. Install it with: pip install mcp"
             )
             return []
+        except Exception as exc:
+            self._raise_mcp_timeout_if_present(exc)
+            raise
 
     def list_tools(self) -> List[ToolInfo]:
         """同步获取工具列表 / Get tool list synchronously
@@ -266,9 +335,15 @@ class ToolMCPSession:
                     async with ClientSession(
                         read_stream, write_stream
                     ) as session:
-                        await session.initialize()
-                        result = await session.call_tool(
-                            name, arguments=arguments or {}
+                        await self._wait_for_mcp_request(
+                            session.initialize(),
+                            "initialize",
+                            self._metadata_timeout_seconds(),
+                        )
+                        result = await self._wait_for_mcp_request(
+                            session.call_tool(name, arguments=arguments or {}),
+                            f"call_tool {name}",
+                            self._invoke_timeout_seconds(),
                         )
                         return result
             else:
@@ -281,9 +356,15 @@ class ToolMCPSession:
                     async with ClientSession(
                         read_stream, write_stream
                     ) as session:
-                        await session.initialize()
-                        result = await session.call_tool(
-                            name, arguments=arguments or {}
+                        await self._wait_for_mcp_request(
+                            session.initialize(),
+                            "initialize",
+                            self._metadata_timeout_seconds(),
+                        )
+                        result = await self._wait_for_mcp_request(
+                            session.call_tool(name, arguments=arguments or {}),
+                            f"call_tool {name}",
+                            self._invoke_timeout_seconds(),
                         )
                         return result
         except ImportError:
@@ -291,6 +372,9 @@ class ToolMCPSession:
                 "mcp package is required for MCP tool calls. "
                 "Install it with: pip install mcp"
             )
+        except Exception as exc:
+            self._raise_mcp_timeout_if_present(exc)
+            raise
 
     def call_tool(
         self,
