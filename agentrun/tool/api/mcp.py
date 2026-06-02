@@ -170,6 +170,28 @@ class ToolMCPSession:
                 f" {self.endpoint}"
             ) from exc
 
+    def _find_mcp_timeout_error(
+        self, exc: BaseException
+    ) -> Optional[TimeoutError]:
+        if isinstance(exc, TimeoutError) and str(exc).startswith("MCP "):
+            return exc
+
+        nested_exceptions = getattr(exc, "exceptions", None)
+        if not nested_exceptions:
+            return None
+
+        for nested_exc in nested_exceptions:
+            timeout_error = self._find_mcp_timeout_error(nested_exc)
+            if timeout_error is not None:
+                return timeout_error
+
+        return None
+
+    def _raise_mcp_timeout_if_present(self, exc: BaseException) -> None:
+        timeout_error = self._find_mcp_timeout_error(exc)
+        if timeout_error is not None:
+            raise timeout_error
+
     def _build_ram_auth(self, url: str) -> tuple:
         """当目标是 agentrun-data 域名时，改写 URL 并返回 httpx Auth handler。
 
@@ -270,6 +292,9 @@ class ToolMCPSession:
                 "mcp package is not installed. Install it with: pip install mcp"
             )
             return []
+        except Exception as exc:
+            self._raise_mcp_timeout_if_present(exc)
+            raise
 
     def list_tools(self) -> List[ToolInfo]:
         """同步获取工具列表 / Get tool list synchronously
@@ -347,6 +372,9 @@ class ToolMCPSession:
                 "mcp package is required for MCP tool calls. "
                 "Install it with: pip install mcp"
             )
+        except Exception as exc:
+            self._raise_mcp_timeout_if_present(exc)
+            raise
 
     def call_tool(
         self,
