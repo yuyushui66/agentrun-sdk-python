@@ -31,10 +31,7 @@ from fastapi.responses import StreamingResponse
 import pydash
 
 from ..utils.helper import merge, MergeOptions
-from ..utils.reasoning import (
-    get_reasoning_content,
-    is_thinking_enabled_from_env,
-)
+from ..utils.reasoning import get_reasoning_content
 from .model import (
     AgentEvent,
     AgentRequest,
@@ -466,8 +463,6 @@ class AGUIProtocolHandler(BaseProtocolHandler):
             ToolCallStartEvent,
         )
 
-        thinking_enabled = is_thinking_enabled_from_env()
-
         # RAW 事件直接透传
         if event.event == EventType.RAW:
             raw_data = event.data.get("raw", "")
@@ -478,34 +473,31 @@ class AGUIProtocolHandler(BaseProtocolHandler):
             return
 
         if event.event == EventType.REASONING:
-            if thinking_enabled:
-                reasoning_content = (
-                    event.data.get("delta")
-                    or get_reasoning_content(event.data)
-                    or ""
+            reasoning_content = (
+                event.data.get("delta")
+                or get_reasoning_content(event.data)
+                or ""
+            )
+            if reasoning_content:
+                for sse_data in state.end_text_if_open(self._encoder):
+                    yield sse_data
+                for sse_data in state.end_all_tools(self._encoder):
+                    yield sse_data
+                for sse_data in state.ensure_reasoning_started():
+                    yield sse_data
+                yield _encode_reasoning_event(
+                    "REASONING_MESSAGE_CONTENT",
+                    messageId=state.reasoning.message_id,
+                    delta=reasoning_content,
                 )
-                if reasoning_content:
-                    for sse_data in state.end_text_if_open(self._encoder):
-                        yield sse_data
-                    for sse_data in state.end_all_tools(self._encoder):
-                        yield sse_data
-                    for sse_data in state.ensure_reasoning_started():
-                        yield sse_data
-                    yield _encode_reasoning_event(
-                        "REASONING_MESSAGE_CONTENT",
-                        messageId=state.reasoning.message_id,
-                        delta=reasoning_content,
-                    )
             return
 
         # TEXT 事件：在首个 TEXT 前注入 TEXT_MESSAGE_START
         # AG-UI 协议要求：发送 TEXT_MESSAGE_START 前必须先结束所有未结束的 TOOL_CALL
         if event.event == EventType.TEXT:
-            addition = self._strip_reasoning_from_addition(
-                event.addition, thinking_enabled
-            )
+            addition = self._strip_reasoning_from_addition(event.addition)
             addition_reasoning = get_reasoning_content(event.addition or {})
-            if thinking_enabled and addition_reasoning:
+            if addition_reasoning:
                 for sse_data in state.ensure_reasoning_started():
                     yield sse_data
                 yield _encode_reasoning_event(
@@ -874,7 +866,6 @@ class AGUIProtocolHandler(BaseProtocolHandler):
     def _strip_reasoning_from_addition(
         self,
         addition: Optional[Dict[str, Any]],
-        thinking_enabled: bool,
     ) -> Optional[Dict[str, Any]]:
         if not addition:
             return addition
@@ -890,8 +881,6 @@ class AGUIProtocolHandler(BaseProtocolHandler):
             else:
                 stripped.pop("additional_kwargs", None)
 
-        if not thinking_enabled:
-            return stripped
         return stripped or None
 
     async def _error_stream(self, message: str) -> AsyncIterator[str]:

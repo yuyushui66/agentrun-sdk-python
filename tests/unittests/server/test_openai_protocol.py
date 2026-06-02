@@ -1017,7 +1017,7 @@ class TestOpenAIProtocolRawEvent:
 
 
 class TestOpenAIReasoningContent:
-    """测试 OpenAI reasoning_content 输出开关"""
+    """测试 OpenAI reasoning_content 输出"""
 
     def get_client(self, invoke_agent):
         server = AgentRunServer(invoke_agent=invoke_agent)
@@ -1042,10 +1042,12 @@ class TestOpenAIReasoningContent:
         )
 
         events = _openai_sse_events(response)
-        assert events[0]["choices"][0]["delta"]["reasoning_content"] == "thinking"
+        assert (
+            events[0]["choices"][0]["delta"]["reasoning_content"] == "thinking"
+        )
         assert events[1]["choices"][0]["delta"]["content"] == "answer"
 
-    def test_stream_suppresses_reasoning_when_thinking_disabled(
+    def test_stream_includes_reasoning_when_thinking_disabled(
         self, monkeypatch
     ):
         monkeypatch.setenv("MODEL_PARAMETER_RULES", '{"thinking": false}')
@@ -1066,11 +1068,10 @@ class TestOpenAIReasoningContent:
         )
 
         events = _openai_sse_events(response)
-        assert all(
-            "reasoning_content" not in event["choices"][0]["delta"]
-            for event in events
+        assert (
+            events[0]["choices"][0]["delta"]["reasoning_content"] == "thinking"
         )
-        assert events[0]["choices"][0]["delta"]["content"] == "answer"
+        assert events[1]["choices"][0]["delta"]["content"] == "answer"
 
     def test_non_stream_includes_reasoning_when_thinking_enabled(
         self, monkeypatch
@@ -1098,7 +1099,7 @@ class TestOpenAIReasoningContent:
         assert message["content"] == "answer"
         assert message["reasoning_content"] == "thinking"
 
-    def test_non_stream_suppresses_reasoning_when_thinking_disabled(
+    def test_non_stream_includes_reasoning_when_thinking_disabled(
         self, monkeypatch
     ):
         monkeypatch.setenv("MODEL_PARAMETER_RULES", '{"thinking": false}')
@@ -1122,12 +1123,12 @@ class TestOpenAIReasoningContent:
 
         message = response.json()["choices"][0]["message"]
         assert message["content"] == "answer"
-        assert "reasoning_content" not in message
+        assert message["reasoning_content"] == "thinking"
 
     def test_stream_promotes_chunk_additional_kwargs_reasoning(
         self, monkeypatch
     ):
-        monkeypatch.setenv("MODEL_PARAMETER_RULES", '{"thinking": true}')
+        monkeypatch.setenv("MODEL_PARAMETER_RULES", '{"thinking": false}')
 
         async def invoke_agent(request: AgentRequest):
             yield SimpleNamespace(
@@ -1144,8 +1145,37 @@ class TestOpenAIReasoningContent:
         )
 
         events = _openai_sse_events(response)
-        assert events[0]["choices"][0]["delta"]["reasoning_content"] == "thinking"
+        assert (
+            events[0]["choices"][0]["delta"]["reasoning_content"] == "thinking"
+        )
         assert events[1]["choices"][0]["delta"]["content"] == "answer"
+
+    def test_stream_promotes_text_addition_reasoning_when_thinking_disabled(
+        self, monkeypatch
+    ):
+        monkeypatch.setenv("MODEL_PARAMETER_RULES", '{"thinking": false}')
+
+        async def invoke_agent(request: AgentRequest):
+            yield AgentEvent(
+                event=EventType.TEXT,
+                data={"delta": "answer"},
+                addition={
+                    "additional_kwargs": {"reasoning_content": "thinking"}
+                },
+            )
+
+        response = self.get_client(invoke_agent).post(
+            "/openai/v1/chat/completions",
+            json={
+                "messages": [{"role": "user", "content": "Hi"}],
+                "stream": True,
+            },
+        )
+
+        delta = _openai_sse_events(response)[0]["choices"][0]["delta"]
+        assert delta["content"] == "answer"
+        assert delta["reasoning_content"] == "thinking"
+        assert "additional_kwargs" not in delta
 
     def test_parses_request_message_reasoning_content(self):
         captured_request = {}
