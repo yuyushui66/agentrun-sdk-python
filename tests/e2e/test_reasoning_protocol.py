@@ -71,14 +71,13 @@ async def test_openai_stream_reasoning_content_gate(
     assert response.status_code == 200
     events = _parse_sse_events(response.text)
     deltas = [
-        (event.get("choices") or [{}])[0].get("delta") or {}
-        for event in events
+        (event.get("choices") or [{}])[0].get("delta") or {} for event in events
     ]
     reasoning = "".join(delta.get("reasoning_content", "") for delta in deltas)
     content = "".join(delta.get("content", "") for delta in deltas)
 
     assert content == "answer"
-    assert reasoning == ("thinking" if thinking_enabled else "")
+    assert reasoning == "thinking"
     assert all("additional_kwargs" not in delta for delta in deltas)
 
 
@@ -104,10 +103,7 @@ async def test_openai_non_stream_reasoning_content_gate(
     assert response.status_code == 200
     message = response.json()["choices"][0]["message"]
     assert message["content"] == "answer"
-    if thinking_enabled:
-        assert message["reasoning_content"] == "thinking"
-    else:
-        assert "reasoning_content" not in message
+    assert message["reasoning_content"] == "thinking"
 
 
 @pytest.mark.parametrize("thinking_enabled", [True, False])
@@ -140,14 +136,7 @@ async def test_agui_reasoning_events_gate(
     )
 
     assert content == "answer"
-    if thinking_enabled:
-        assert reasoning == "thinking"
-        assert event_types.index("REASONING_MESSAGE_CONTENT") < event_types.index(
-            "TEXT_MESSAGE_START"
-        )
-    else:
-        assert reasoning == ""
-        assert all(
-            not event_type.startswith("REASONING")
-            for event_type in event_types
-        )
+    assert reasoning == "thinking"
+    assert event_types.index("REASONING_MESSAGE_CONTENT") < event_types.index(
+        "TEXT_MESSAGE_START"
+    )
