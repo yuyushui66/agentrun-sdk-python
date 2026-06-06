@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from agentrun.knowledgebase.model import (
+    ADBRerankModel,
     ADBProviderSettings,
     ADBRetrieveSettings,
     BailianProviderSettings,
@@ -207,6 +208,10 @@ class TestADBRetrieveSettings:
             top_k=10,
             use_full_text_retrieval=True,
             rerank_factor=1.5,
+            rerank_model=ADBRerankModel(
+                name="qwen3-rerank",
+                instruct="按相关性排序",
+            ),
             recall_window=[-5, 5],
             hybrid_search="RRF",
             hybrid_search_args={"RRF": {"k": 60}},
@@ -214,6 +219,9 @@ class TestADBRetrieveSettings:
         assert settings.top_k == 10
         assert settings.use_full_text_retrieval is True
         assert settings.rerank_factor == 1.5
+        assert settings.rerank_model is not None
+        assert settings.rerank_model.name == "qwen3-rerank"
+        assert settings.rerank_model.instruct == "按相关性排序"
         assert settings.recall_window == [-5, 5]
         assert settings.hybrid_search == "RRF"
         assert settings.hybrid_search_args == {"RRF": {"k": 60}}
@@ -224,6 +232,7 @@ class TestADBRetrieveSettings:
         assert settings.top_k is None
         assert settings.use_full_text_retrieval is None
         assert settings.rerank_factor is None
+        assert settings.rerank_model is None
         assert settings.recall_window is None
         assert settings.hybrid_search is None
         assert settings.hybrid_search_args is None

@@ -45,6 +45,7 @@ import time
 
 from agentrun.knowledgebase import (
     ADBProviderSettings,
+    ADBRerankModel,
     ADBRetrieveSettings,
     BailianProviderSettings,
     BailianRetrieveSettings,
@@ -474,6 +475,10 @@ def create_or_get_adb_kb() -> KnowledgeBase:
                     top_k=10,
                     use_full_text_retrieval=False,  # 仅使用向量检索 / Vector only
                     rerank_factor=2.0,  # 重排序因子 / Rerank factor
+                    rerank_model=ADBRerankModel(
+                        name="qwen3-rerank",  # 重排模型名称 / Rerank model name
+                        instruct="按相关性排序",  # 排序任务类型说明（仅 qwen3-rerank 支持）/ Instruct (only for qwen3-rerank)
+                    ),
                 ),
             )
         )

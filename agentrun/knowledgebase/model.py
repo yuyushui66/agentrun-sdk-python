@@ -106,6 +106,22 @@ class ADBProviderSettings(BaseModel):
     """元数据配置，JSON 字符串格式 / Metadata configuration in JSON string format"""
 
 
+class ADBRerankModel(BaseModel):
+    """ADB 重排模型配置 / ADB Rerank Model Configuration
+
+    配置重排模型的名称和排序任务类型说明。
+    Configure the rerank model name and instruct for sorting task type.
+    """
+
+    name: str
+    """重排模型名称，可选值：qwen3-rerank、gte-rerank-v2
+    Rerank model name, options: qwen3-rerank, gte-rerank-v2"""
+    instruct: Optional[str] = None
+    """排序任务类型说明，仅当 name 为 qwen3-rerank 时可设置，指导模型采用不同的排序策略
+    Instruct for sorting task type, only available when name is qwen3-rerank,
+    guides the model to adopt different sorting strategies"""
+
+
 class ADBRetrieveSettings(BaseModel):
     """ADB 检索设置 / ADB Retrieve Settings
 
@@ -122,6 +138,9 @@ class ADBRetrieveSettings(BaseModel):
     rerank_factor: Optional[float] = None
     """重排序因子，取值范围 1 < RerankFactor <= 5
     Re-ranking factor, value range: 1 < RerankFactor <= 5"""
+    rerank_model: Optional[ADBRerankModel] = None
+    """重排模型配置，当启用重排因子时可设置
+    Rerank model configuration, available when rerank factor is enabled"""
     recall_window: Optional[List[int]] = None
     """召回窗口，格式为 [A, B]，其中 -10 <= A <= 0，0 <= B <= 10
     Recall window, format [A, B] where -10 <= A <= 0, 0 <= B <= 10"""
