@@ -14,6 +14,7 @@ from agentrun.knowledgebase.api.data import (
 )
 from agentrun.knowledgebase.model import (
     ADBProviderSettings,
+    ADBRerankModel,
     ADBRetrieveSettings,
     BailianProviderSettings,
     BailianRetrieveSettings,
@@ -995,6 +996,7 @@ class TestADBDataAPIBuildQueryContentRequest:
         assert request.dbinstance_id == "gp-123456"
         assert request.namespace == "public"
         assert request.collection == "test-kb"
+        assert request.url_expiration == "356d"
 
     @patch.dict(
         os.environ,
@@ -1017,6 +1019,10 @@ class TestADBDataAPIBuildQueryContentRequest:
                 top_k=10,
                 use_full_text_retrieval=True,
                 rerank_factor=1.5,
+                rerank_model=ADBRerankModel(
+                    name="qwen3-rerank",
+                    instruct="按相关性排序",
+                ),
                 recall_window=[-5, 5],
                 hybrid_search="RRF",
                 hybrid_search_args={"RRF": {"k": 60}},
@@ -1024,10 +1030,12 @@ class TestADBDataAPIBuildQueryContentRequest:
         )
 
         request = api._build_query_content_request("test query")
+        assert request.url_expiration == "356d"
         assert request.metrics == "cosine"
         assert request.top_k == 10
         assert request.use_full_text_retrieval is True
         assert request.rerank_factor == 1.5
+        assert request.rerank_model is not None
 
     @patch.dict(
         os.environ,

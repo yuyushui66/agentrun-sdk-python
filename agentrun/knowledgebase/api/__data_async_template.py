@@ -405,6 +405,8 @@ class ADBDataAPI(KnowledgeBaseDataAPI, ControlAPI):
             "namespace_password": self.provider_settings.namespace_password,
             "collection": self.knowledge_base_name,
             "region_id": cfg.get_region_id(),
+            # 固定设置 URL 过期时间为 356 天 / Fixed URL expiration to 356 days
+            "url_expiration": "356d",
         }
 
         # 添加可选的提供商设置 / Add optional provider settings
@@ -423,6 +425,15 @@ class ADBDataAPI(KnowledgeBaseDataAPI, ControlAPI):
                 request_params["rerank_factor"] = (
                     self.retrieve_settings.rerank_factor
                 )
+            if self.retrieve_settings.rerank_model is not None:
+                rerank_model_params: Dict[str, Any] = {
+                    "Name": self.retrieve_settings.rerank_model.name,
+                }
+                if self.retrieve_settings.rerank_model.instruct is not None:
+                    rerank_model_params["Instruct"] = (
+                        self.retrieve_settings.rerank_model.instruct
+                    )
+                request_params["rerank_model"] = rerank_model_params
             if self.retrieve_settings.recall_window is not None:
                 request_params["recall_window"] = (
                     self.retrieve_settings.recall_window

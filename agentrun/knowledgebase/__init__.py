@@ -13,6 +13,7 @@ from .client import KnowledgeBaseClient
 from .knowledgebase import KnowledgeBase
 from .model import (
     ADBProviderSettings,
+    ADBRerankModel,
     ADBRetrieveSettings,
     BailianProviderSettings,
     BailianRetrieveSettings,
@@ -64,6 +65,7 @@ __all__ = [
     "RetrieveSettings",
     "RagFlowRetrieveSettings",
     "BailianRetrieveSettings",
+    "ADBRerankModel",
     "ADBRetrieveSettings",
     "OTSRetrieveSettings",
     "OTSDenseVectorSearchConfig",

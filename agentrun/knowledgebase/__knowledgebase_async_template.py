@@ -15,6 +15,7 @@ from agentrun.utils.resource import ResourceBase
 from .api.data import get_data_api
 from .model import (
     ADBProviderSettings,
+    ADBRerankModel,
     ADBRetrieveSettings,
     BailianProviderSettings,
     BailianRetrieveSettings,
@@ -343,6 +344,14 @@ class KnowledgeBase(
                         ),
                         rerank_factor=self.retrieve_settings.get(
                             "RerankFactor"
+                        ),
+                        rerank_model=(
+                            ADBRerankModel(
+                                name=self.retrieve_settings.get("RerankModel", {}).get("Name", ""),
+                                instruct=self.retrieve_settings.get("RerankModel", {}).get("Instruct"),
+                            )
+                            if self.retrieve_settings.get("RerankModel")
+                            else None
                         ),
                         recall_window=self.retrieve_settings.get(
                             "RecallWindow"

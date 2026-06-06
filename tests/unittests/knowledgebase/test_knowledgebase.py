@@ -702,6 +702,7 @@ class TestKnowledgeBaseGetDataAPI:
                 "TopK": 10,
                 "UseFullTextRetrieval": True,
                 "RerankFactor": 1.5,
+                "RerankModel": {"Name": "qwen3-rerank", "Instruct": "按相关性排序"},
                 "RecallWindow": [-5, 5],
                 "HybridSearch": "RRF",
                 "HybridSearchArgs": {"RRF": {"k": 60}},
