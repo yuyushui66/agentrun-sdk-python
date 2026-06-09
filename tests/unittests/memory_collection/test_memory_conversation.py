@@ -1,11 +1,17 @@
 """Tests for AgentRun Memory Conversation / AgentRun 记忆对话测试"""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
 from agentrun.memory_collection import MemoryConversation
 from agentrun.server.model import AgentRequest, Message, MessageRole
+
+
+async def _flush_bg_tasks():
+    """Let fire-and-forget background tasks complete before assertions."""
+    await asyncio.sleep(0.05)
 
 
 @pytest.fixture
@@ -185,6 +191,9 @@ class TestMemoryConversation:
         # Verify results
         assert results == ["Hello", ", ", "world!"]
 
+        # Wait for fire-and-forget background tasks to complete
+        await _flush_bg_tasks()
+
         # Verify memory store calls
         assert mock_memory_store.put_session.called
         assert mock_memory_store.put_message.called
@@ -251,6 +260,9 @@ class TestMemoryConversation:
         results = []
         async for event in memory.wrap_invoke_agent(request, mock_agent):
             results.append(event)
+
+        # Wait for fire-and-forget background tasks to complete
+        await _flush_bg_tasks()
 
         # Verify agent still responds
         assert results == ["Still works!"]
@@ -338,6 +350,9 @@ class TestMemoryConversation:
         assert len(results) == 4
         assert results[0] == "Let me search for that..."
         assert results[3] == "Based on the search, it's sunny today."
+
+        # Wait for fire-and-forget background tasks to complete
+        await _flush_bg_tasks()
 
         # Verify message was saved with tool calls
         assert mock_memory_store.put_message.called
@@ -436,6 +451,9 @@ class TestMemoryConversation:
 
         # Verify all events were passed through
         assert len(results) == 4
+
+        # Wait for fire-and-forget background tasks to complete
+        await _flush_bg_tasks()
 
         # Verify message was saved with accumulated tool call
         assert mock_memory_store.put_message.called
