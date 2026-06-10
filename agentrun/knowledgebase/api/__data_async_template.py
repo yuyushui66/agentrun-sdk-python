@@ -7,6 +7,7 @@ Provides data API for knowledge base retrieval operations.
 Dispatches to different implementations based on provider type (ragflow / bailian / adb).
 """
 
+import json
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Union
 
@@ -267,6 +268,42 @@ class BailianDataAPI(KnowledgeBaseDataAPI, ControlAPI):
         self.provider_settings = provider_settings
         self.retrieve_settings = retrieve_settings
 
+    @staticmethod
+    def _normalize_search_filters(
+        search_filters: Optional[List[Dict[str, Any]]] = None,
+    ) -> Optional[List[Dict[str, str]]]:
+        """规范化百炼 SearchFilters 格式 / Normalize Bailian SearchFilters format
+
+        百炼 API 要求 search_filters 中每个 dict 的值必须是字符串类型。
+        对于 list 类型的值（如 tags 过滤），需转换为 JSON 序列化后的字符串。
+        例如: {"tags": ["0216"]} → {"tags": '["0216"]'}
+
+        Bailian API requires each dict value in search_filters to be a string.
+        For list-typed values (e.g. tags filter), convert to JSON-serialized string.
+        e.g. {"tags": ["0216"]} → {"tags": '["0216"]'}
+
+        Args:
+            search_filters: 原始 search_filters / Raw search_filters
+
+        Returns:
+            规范化后的 search_filters / Normalized search_filters
+        """
+        if search_filters is None:
+            return None
+
+        normalized: List[Dict[str, str]] = []
+        for filter_item in search_filters:
+            normalized_item: Dict[str, str] = {}
+            for key, value in filter_item.items():
+                if isinstance(value, (list, dict)):
+                    normalized_item[key] = json.dumps(
+                        value, ensure_ascii=False
+                    )
+                else:
+                    normalized_item[key] = str(value)
+            normalized.append(normalized_item)
+        return normalized
+
     async def retrieve_async(
         self,
         query: str,
@@ -318,8 +355,9 @@ class BailianDataAPI(KnowledgeBaseDataAPI, ControlAPI):
 
             # 添加运行时元数据过滤条件 / Add runtime metadata search filters
             if search_filters is not None:
-                request_params["search_filters"] = search_filters
-                request_params["is_displayed_chunk_content"] = True
+                request_params["search_filters"] = (
+                    self._normalize_search_filters(search_filters)
+                )
 
             # 获取百炼客户端 / Get Bailian client
             client = self._get_bailian_client(config)
