@@ -37,11 +37,17 @@ class TestConfig:
     def test_kb_endpoints_vpc_mode(self):
         config = Config(region_id="cn-hangzhou", use_vpc_endpoint=True)
         assert config.get_bailian_endpoint() == (
-            "bailian-vpc.cn-hangzhou.aliyuncs.com"
+            "https://bailian.cn-beijing.aliyuncs.com"
         )
         assert config.get_gpdb_endpoint() == "gpdb-vpc.cn-hangzhou.aliyuncs.com"
         assert config.get_ots_endpoint("my-instance") == (
             "https://my-instance.cn-hangzhou.vpc.tablestore.aliyuncs.com"
+        )
+
+    def test_kb_endpoints_vpc_mode_bailian_beijing_only(self):
+        config = Config(region_id="cn-beijing", use_vpc_endpoint=True)
+        assert config.get_bailian_endpoint() == (
+            "bailian-vpc.cn-beijing.aliyuncs.com"
         )
 
     def test_bailian_endpoint_override_takes_precedence(self):

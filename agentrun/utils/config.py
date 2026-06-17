@@ -289,8 +289,10 @@ class Config:
         if self._bailian_endpoint:
             return self._bailian_endpoint
 
-        if self._use_vpc_endpoint:
-            return f"bailian-vpc.{self.get_region_id()}.aliyuncs.com"
+        # 百炼 OpenAPI 仅 cn-beijing 提供 VPC 接入地址；其他地域走公网。
+        # https://help.aliyun.com/zh/model-studio/api-bailian-2023-12-29-endpoint
+        if self._use_vpc_endpoint and self.get_region_id() == "cn-beijing":
+            return "bailian-vpc.cn-beijing.aliyuncs.com"
 
         return "https://bailian.cn-beijing.aliyuncs.com"
 
