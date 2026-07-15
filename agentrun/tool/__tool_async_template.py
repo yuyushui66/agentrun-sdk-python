@@ -652,14 +652,24 @@ class Tool(BaseModel):
         if qualifier:
             from urllib.parse import quote
 
+            # LATEST 大小写不敏感，发送前统一归一为规范形式 "LATEST"，使
+            # "发送给后端的值 / 本地版本标记 / 下载决策" 三者一致（本地标记侧
+            # 见 skill_loader._canonical_qualifier）。定版 qualifier 保持原样。
+            # LATEST is case-insensitive; normalize to the canonical "LATEST"
+            # before sending so the value sent to the backend, the local version
+            # marker, and the download decision all agree (the marker side lives
+            # in skill_loader._canonical_qualifier). Pinned versions are kept
+            # as-is.
+            if qualifier.upper() == "LATEST":
+                qualifier = "LATEST"
             url = f"{url}?qualifier={quote(qualifier, safe='')}"
         return url
 
     async def download_skill_async(
         self,
         target_dir: str = ".skills",
-        qualifier: Optional[str] = None,
         config: Optional[Config] = None,
+        qualifier: Optional[str] = None,
     ) -> str:
         """异步下载 Skill 包并解压到本地目录 / Download skill package and extract to local directory asynchronously
 
@@ -670,9 +680,9 @@ class Tool(BaseModel):
 
         Args:
             target_dir: 目标根目录,默认为 ".skills" / Target root directory, defaults to ".skills"
+            config: 配置对象,可选 / Configuration object, optional
             qualifier: 版本标识，为空时后端返回 LATEST 代码 /
                        Version qualifier; when None, the backend returns the LATEST code
-            config: 配置对象,可选 / Configuration object, optional
 
         Returns:
             str: 解压后的 skill 目录路径 / Extracted skill directory path

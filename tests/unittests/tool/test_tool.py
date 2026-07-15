@@ -491,20 +491,28 @@ class TestTool:
             data_endpoint="https://example.com",
         )
         url = tool._get_skill_download_url(qualifier="v1.0.0")
-        assert url == "https://example.com/tools/my-skill/download?qualifier=v1.0.0"
+        assert (
+            url
+            == "https://example.com/tools/my-skill/download?qualifier=v1.0.0"
+        )
 
     def test_get_skill_download_url_latest_case_insensitive(self):
-        """测试 LATEST 大小写不敏感均可通过校验并出现在 URL 中"""
+        """测试 LATEST 大小写不敏感均可通过校验，且发送前归一为规范 "LATEST"
+
+        无论传入何种大小写，构造出的 URL 都用规范形式 "LATEST"，与本地版本
+        标记（skill_loader._canonical_qualifier）保持一致，避免向后端发送
+        未归一的 "latest"。/ Regardless of the input casing, the constructed
+        URL uses the canonical "LATEST" so it agrees with the local version
+        marker and never sends an un-normalized "latest" to the backend.
+        """
         tool = Tool(
             tool_name="my-skill",
             data_endpoint="https://example.com",
         )
-        assert tool._get_skill_download_url(qualifier="LATEST") == (
-            "https://example.com/tools/my-skill/download?qualifier=LATEST"
-        )
-        assert tool._get_skill_download_url(qualifier="latest") == (
-            "https://example.com/tools/my-skill/download?qualifier=latest"
-        )
+        for variant in ("LATEST", "latest", "LaTeSt"):
+            assert tool._get_skill_download_url(qualifier=variant) == (
+                "https://example.com/tools/my-skill/download?qualifier=LATEST"
+            )
 
     def test_get_skill_download_url_invalid_qualifier_raises(self):
         """测试非法 qualifier（含已废弃的 default）在构造 URL 时即抛错"""
